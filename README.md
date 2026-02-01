@@ -1,5 +1,7 @@
 # Music Bottles v4 (Raspberry Pi)
 
+(This documented is synthesized by GPT-5.2 Codex)
+
 Interactive installation: users lift bottle caps to trigger layered music playback. Bottle identities are determined by weight differences measured on a single load cell (HX711). An Arduino drives NeoPixel LEDs to visualize bottle/cap states.
 
 ## Conceptual design
@@ -14,21 +16,25 @@ Interactive installation: users lift bottle caps to trigger layered music playba
 ### Core runtime
 
 - **Main app**: `musicBottles.c`
+
   - Reads the HX711 via `hx711.c`/`hx711.h`.
   - Uses GPIO (via `minimal_gpio.c`) for button input and for signaling the Arduino.
   - Uses SDL2 + SDL2_mixer (via `audio.c`) for audio playback.
   - Implements state matching for the three bottles based on weight deltas.
 
 - **Audio**: `audio.c` / `audio.h`
+
   - Initializes SDL2 audio and SDL2_mixer.
   - Loads 3 tracks per “set” (Jazz, Classic, Synth, Boston) and assigns them to channels A/B/C.
   - Fades channel volume to create smooth transitions.
 
 - **Scale interface**: `hx711.c` / `hx711.h`
+
   - Bit-bangs HX711 data/clock lines.
   - Provides `getCleanSample()` for noise-reduced sampling and a simple `speedTest()`.
 
 - **GPIO memory mapping**: `minimal_gpio.c`
+
   - Bare-metal style /dev/mem access for fast GPIO operations.
 
 - **Utilities**:
@@ -39,6 +45,7 @@ Interactive installation: users lift bottle caps to trigger layered music playba
 ### Arduino lighting controller
 
 - `arduino/musicBottles/musicBottles.ino`
+
   - Reads six GPIO pins (3 bottles + 3 caps) from the Pi.
   - Drives a NeoPixel strip split into three sections, each section representing a bottle.
 
@@ -68,10 +75,12 @@ A combination is valid if its distance to the measured delta is within `STABLE_T
 ### GPIO pin map (Pi)
 
 Inputs (buttons):
+
 - Re-tare: GPIO 26
 - Music set: GPIO 19, 13, 6, 5
 
 Outputs (to Arduino):
+
 - Bottle 1: GPIO 18
 - Cap 1: GPIO 17
 - Bottle 2: GPIO 27
@@ -80,6 +89,7 @@ Outputs (to Arduino):
 - Cap 3: GPIO 24
 
 HX711:
+
 - Data: GPIO 21
 - Clock: GPIO 20
 
