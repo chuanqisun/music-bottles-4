@@ -31,7 +31,7 @@ Based on code by Tomer Weller, Jasmin Rubinovitz, as well as the general idea of
 #define MUSIC4_BTN (GPIO_IN0  & (1 << MUSIC4_PIN))
 
 //TODO: run analysis to determine correct stable thresh for this specific load cell and weights. 50 is a good educated guess meanwhile
-#define STABLE_THRESH 50
+#define STABLE_THRESH 43
 
 long tare =0;
 
