@@ -4,19 +4,19 @@ Music Bottles v4 by Tal Achituv
 
 Based on code by Tomer Weller, Jasmin Rubinovitz, as well as the general idea of previous Music Bottles versions
 
+Simplified weight change detection system:
+- Auto tare on start
+- Detect cap removal by weight delta matching
+- Trigger music when cap weight is detected within error margin
+
 */
 
 #include "audio.h"
 #include "hx711.h"
 #include "minimal_gpio.c"
+#include <unistd.h>
 
-//Buttons connections
-#define RETARE_PIN  26
-#define MUSIC1_PIN  19
-#define MUSIC2_PIN  13
-#define MUSIC3_PIN  6
-#define MUSIC4_PIN  5
-
+// GPIO output pins to Arduino for LED control
 #define BOT1_PIN 18
 #define CAP1_PIN 17
 #define BOT2_PIN 27
@@ -24,205 +24,197 @@ Based on code by Tomer Weller, Jasmin Rubinovitz, as well as the general idea of
 #define BOT3_PIN 23
 #define CAP3_PIN 24
 
-#define RETARE_BTN (GPIO_IN0  & (1 << RETARE_PIN))
-#define MUSIC1_BTN (GPIO_IN0  & (1 << MUSIC1_PIN))
-#define MUSIC2_BTN (GPIO_IN0  & (1 << MUSIC2_PIN))
-#define MUSIC3_BTN (GPIO_IN0  & (1 << MUSIC3_PIN))
-#define MUSIC4_BTN (GPIO_IN0  & (1 << MUSIC4_PIN))
+// Weight detection error margin (+-30)
+#define WEIGHT_MARGIN 30
 
-//TODO: run analysis to determine correct stable thresh for this specific load cell and weights. 50 is a good educated guess meanwhile
-#define STABLE_THRESH 43
+// Global state
+long tare = 0;
+int cap1, cap2, cap3;  // Cap weights from CLI args
+int soundSet = 0;      // Sound set selection (0=jazz, 1=classic, 2=synth, 3=boston)
+long smoothedWeight = 0;  // Smoothed weight reading (relative to tare)
 
-long tare =0;
+// Track which caps are currently detected as removed
+int cap1Removed = 0;
+int cap2Removed = 0;
+int cap3Removed = 0;
 
-int bot1;
-int cap1;
-int bot2;
-int cap2;
-int bot3;
-int cap3;
-
-void setBottleStates(int a, int b, int c) {
-	//set output pins for Arduino to handle light
-	gpioWrite(BOT1_PIN,a<2);
-	gpioWrite(CAP1_PIN,a<1);
-	gpioWrite(BOT2_PIN,b<2);
-	gpioWrite(CAP2_PIN,b<1);
-	gpioWrite(BOT3_PIN,c<2);
-	gpioWrite(CAP3_PIN,c<1);
+void setupGPIO() {
+	if (gpioInitialise() < 0) exit(-1);
 	
-	//handle sounds (max volume = 128, must be above 100 to play due to fade-out logic in audio.c)
-	(a==1)?volume(0,105):fadeOut(0);
-	(b==1)?volume(1,105):fadeOut(1);
-	(c==1)?volume(2,105):fadeOut(2);
+	// Output pins to Arduino for LED control
+	gpioSetMode(BOT1_PIN, PI_OUTPUT);
+	gpioSetMode(CAP1_PIN, PI_OUTPUT);
+	gpioSetMode(BOT2_PIN, PI_OUTPUT);
+	gpioSetMode(CAP2_PIN, PI_OUTPUT);
+	gpioSetMode(BOT3_PIN, PI_OUTPUT);
+	gpioSetMode(CAP3_PIN, PI_OUTPUT);
+}
 
-	//restart (and pause) current stream if all bottles are off
-	if (a==2 && b==2 && c==2) {
+void setBottleLED(int bottle, int capRemoved) {
+	// Signal Arduino: bottle present, cap removed state
+	switch(bottle) {
+		case 1:
+			gpioWrite(BOT1_PIN, 1);  // Bottle present
+			gpioWrite(CAP1_PIN, capRemoved ? 0 : 1);
+			break;
+		case 2:
+			gpioWrite(BOT2_PIN, 1);
+			gpioWrite(CAP2_PIN, capRemoved ? 0 : 1);
+			break;
+		case 3:
+			gpioWrite(BOT3_PIN, 1);
+			gpioWrite(CAP3_PIN, capRemoved ? 0 : 1);
+			break;
+	}
+}
+
+// Check if weight delta matches a cap weight within margin
+int matchesCap(long weightDelta, int capWeight) {
+	long target = -capWeight;  // Negative because cap removal reduces weight
+	return (weightDelta >= target - WEIGHT_MARGIN) && (weightDelta <= target + WEIGHT_MARGIN);
+}
+
+// Detect which cap is removed based on current weight delta and trigger music
+// Uses fade-in/fade-out pattern from reference: either set volume OR fadeOut each cycle
+void detectCapAndTriggerMusic(long weightDelta) {
+	int newCap1 = matchesCap(weightDelta, cap1);
+	int newCap2 = matchesCap(weightDelta, cap2);
+	int newCap3 = matchesCap(weightDelta, cap3);
+	int noCapRemoved = (weightDelta >= -WEIGHT_MARGIN && weightDelta <= WEIGHT_MARGIN);
+	
+	// Log state changes
+	if (newCap1 && !cap1Removed) {
+		printf("\n>>> CAP 1 REMOVED (weight: %ld, expected: -%d) - Playing Track 1\n", weightDelta, cap1);
+		setBottleLED(1, 1);
+		cap1Removed = 1;
+	} else if (!newCap1 && cap1Removed) {
+		printf("\n>>> CAP 1 REPLACED - Fading Track 1\n");
+		setBottleLED(1, 0);
+		cap1Removed = 0;
+	}
+	
+	if (newCap2 && !cap2Removed) {
+		printf("\n>>> CAP 2 REMOVED (weight: %ld, expected: -%d) - Playing Track 2\n", weightDelta, cap2);
+		setBottleLED(2, 1);
+		cap2Removed = 1;
+	} else if (!newCap2 && cap2Removed) {
+		printf("\n>>> CAP 2 REPLACED - Fading Track 2\n");
+		setBottleLED(2, 0);
+		cap2Removed = 0;
+	}
+	
+	if (newCap3 && !cap3Removed) {
+		printf("\n>>> CAP 3 REMOVED (weight: %ld, expected: -%d) - Playing Track 3\n", weightDelta, cap3);
+		setBottleLED(3, 1);
+		cap3Removed = 1;
+	} else if (!newCap3 && cap3Removed) {
+		printf("\n>>> CAP 3 REPLACED - Fading Track 3\n");
+		setBottleLED(3, 0);
+		cap3Removed = 0;
+	}
+	
+	// Apply volume or fade-out each cycle (reference pattern)
+	// Volume 105 is used (must be >= 100 to trigger play, per audio.c logic)
+	cap1Removed ? volume(0, 105) : fadeOut(0);
+	cap2Removed ? volume(1, 105) : fadeOut(1);
+	cap3Removed ? volume(2, 105) : fadeOut(2);
+	
+	// Rewind files if all caps are back on
+	if (noCapRemoved && !cap1Removed && !cap2Removed && !cap3Removed) {
 		rewindFiles();
 	}
-
 }
-
-int knownState = 0;
-
-void handleWeightChangeAbsolute(int weight) {
-	int i;
-	int found = 0;
-	printf("Handling Absolute Weight: %d", weight);
-
-	int bestDistance = 9999;
-	for (i=0; i<27; i++) {
-		int a = i%3;
-		int b = (i/3)%3;
-		int c = (i/9)%3; 
-
-		// for each bottle: 0 is both bottle and cap are on, 1 is only the bottle is on, and 2 is both bottle and cap are missing...
-		int weightTarget = 0;
-		if (a==1) { weightTarget -= cap1; }
-		else if (a==2) { weightTarget -= (bot1 + cap1); }
-
-		if (b==1) { weightTarget -= cap2; }
-		else if (b==2) { weightTarget -= (bot2 + cap2); }
-
-		if (c==1) { weightTarget -= cap3; }
-		else if (c==2) { weightTarget -= (bot3 + cap3); }
-
-		int distance = abs(weightTarget - weight);
-			//TODO: make STABLE_THRESH configurable from runtime
-		if (distance<STABLE_THRESH) {
-		  
-		  printf("%d : %d%d%d [%d] {%d} <<< MATCH",i,a,b,c,weightTarget,distance);
-		  found++;
-		  if (distance<bestDistance) {
-		    setBottleStates(a,b,c);
-		    bestDistance = distance;      
-		  }
-		  printf("\n");
-		} 
-	}
-	if (found==1) {
-		knownState=1;
-	} else {
-		knownState=0;
-		if (found==0) {
-			printf("!!!!!!!!! FOUND NO MATCHING SETTINGS !!!!!!!!!!!!\n");
-		} else if (found>1) {
-			printf("!!!!!!!!! FOUND MORE THAN ONE MATCHING SETTINGS !!!!!!!!!!!!\n");
-		}
-	}
-
-}
-
-int isStable = 0;
-long lastSample;
-void handleScale() {
-	//TODO: MAKE SAMPLE COUNT AND SPREAD CONFIGURABLE FROM RUNTIME
-	long sample = (getCleanSample(2,5) - tare)/100;
-
-	long distance = abs(lastSample-sample);
-
-	printf("\r                                  \rgot sample: %d\t%d",sample,distance);
-	fflush(stdout);
-
-	//TODO: MAKE DISTANCE MAX/MIN PARAMS CONFIGURABLE FROM RUNTIME
-	if (distance > 20) { //DISTANCE should be smaller than 1/2 stable_threshold
-		isStable = 0;
-	}
-
-	if (distance < 10) {
-	    if (isStable < 1 ) {
-			isStable++;
-		} else if (isStable==1) {	
-			handleWeightChangeAbsolute(sample);
-			isStable++;
-		}	
-	}
-
-	lastSample = sample;
-}
-
-void handleButtons() {
-	//printf("%d %d %d %d %d\n",RETARE_BTN,MUSIC1_BTN,MUSIC2_BTN,MUSIC3_BTN,MUSIC4_BTN);
-	if (RETARE_BTN == 0) {
-		printf("RE-TARE!");
-		tare = getCleanSample(35,4);
-	}
-
-	if (MUSIC1_BTN == 0) {
-		setFiles(0);
-		lastSample+=9999;
-	} else if (MUSIC2_BTN == 0) {
-		setFiles(1);
-		lastSample+=9999;
-	} else if (MUSIC3_BTN == 0) {
-		setFiles(2);
-		lastSample+=9999;
-	} else if (MUSIC4_BTN == 0) {
-		setFiles(3);
-		lastSample+=9999;
-	} 
-
-}
-
-void setupButtons() {
-	if (gpioInitialise() < 0) exit(-1);
-
-	gpioSetMode(RETARE_PIN,PI_INPUT);
-	gpioSetPullUpDown(RETARE_PIN,PI_PUD_UP);
-
-	gpioSetMode(MUSIC1_PIN,PI_INPUT);
-	gpioSetPullUpDown(MUSIC1_PIN,PI_PUD_UP);
-	gpioSetMode(MUSIC2_PIN,PI_INPUT);
-	gpioSetPullUpDown(MUSIC2_PIN,PI_PUD_UP);
-	gpioSetMode(MUSIC3_PIN,PI_INPUT);
-	gpioSetPullUpDown(MUSIC3_PIN,PI_PUD_UP);
-	gpioSetMode(MUSIC4_PIN,PI_INPUT);
-	gpioSetPullUpDown(MUSIC4_PIN,PI_PUD_UP);
-
-	//output pins to Arduino
-	gpioSetMode(BOT1_PIN,PI_OUTPUT);
-	gpioSetMode(CAP1_PIN,PI_OUTPUT);
-	gpioSetMode(BOT2_PIN,PI_OUTPUT);
-	gpioSetMode(CAP2_PIN,PI_OUTPUT);
-	gpioSetMode(BOT3_PIN,PI_OUTPUT);
-	gpioSetMode(CAP3_PIN,PI_OUTPUT);
-}
-
-
 
 int main(int argc, char **argv) {
-	int i;
-	initHX711();
-
-	if (argc!=7 && argc!=8) {
-		printf("Usage: musicBottles bot1 cap2 bot2 cap2 bot3 cap3 [tare]\n(where bot/cap are integer weights of the respective objects, and the optional tare sets a custom tare instead of performing a tare at the beginning)\n");
+	// Parse CLI arguments
+	if (argc != 4 && argc != 5) {
+		printf("Usage: musicBottles [sound] cap1 cap2 cap3\n");
+		printf("  sound: 1=classic (default), 2=jazz, 3=synth, 4=boston\n");
+		printf("  cap1, cap2, cap3: integer weights of the caps (e.g., 629 728 426)\n");
+		printf("  Weight detection margin: +/-%d\n", WEIGHT_MARGIN);
 		return -1;
 	}
-
-	bot1 = atoi(argv[1]);
-	cap1 = atoi(argv[2]);
-	bot2 = atoi(argv[3]);
-	cap2 = atoi(argv[4]);
-	bot3 = atoi(argv[5]);
-	cap3 = atoi(argv[6]);
-
-	if (argc==8) {
-		tare = atoi(argv[7]);
+	
+	// Parse arguments based on count
+	if (argc == 5) {
+		// Sound set specified
+		int soundArg = atoi(argv[1]);
+		if (soundArg < 1 || soundArg > 4) soundArg = 1;
+		// Map: 1=classic(1), 2=jazz(0), 3=synth(2), 4=boston(3)
+		switch(soundArg) {
+			case 1: soundSet = 1; break;  // classic
+			case 2: soundSet = 0; break;  // jazz
+			case 3: soundSet = 2; break;  // synth
+			case 4: soundSet = 3; break;  // boston
+		}
+		cap1 = atoi(argv[2]);
+		cap2 = atoi(argv[3]);
+		cap3 = atoi(argv[4]);
 	} else {
-		tare = getCleanSample(150,4);
+		// Default to classic (soundSet = 1)
+		soundSet = 1;
+		cap1 = atoi(argv[1]);
+		cap2 = atoi(argv[2]);
+		cap3 = atoi(argv[3]);
 	}
-
-	// float sps = speedTest();
-	// printf("Test shows: %f SPS\n",sps);
 	
+	const char *soundNames[] = {"Jazz", "Classic", "Synth", "Boston"};
+	printf("=== Music Bottles v4 ===\n");
+	printf("Sound set: %s\n", soundNames[soundSet]);
+	printf("Cap weights: Cap1=%d, Cap2=%d, Cap3=%d\n", cap1, cap2, cap3);
+	printf("Detection margin: +/-%d\n\n", WEIGHT_MARGIN);
 	
-	setupButtons();
+	// Initialize hardware
+	printf("Initializing scale...\n");
+	initHX711();
+	
+	setupGPIO();
 	initSound();
+	setFiles(soundSet);  // Load selected music set
 	
+	// Auto tare on start (same as scaleTool.c)
+	printf("Acquiring tare... ");
+	fflush(stdout);
+	tare = getCleanSample(150, 4);
+	printf("Tare: %ld\n\n", tare);
+	
+	printf("Monitoring weight changes...\n");
+	printf("(Weight delta shown relative to tared zero)\n\n");
+	
+	// Main loop - simplified weight monitoring (based on scaleTool.c)
 	while (1) {
-		handleScale();
-		handleButtons();
-		handleFade(); //in audio.c
+		long raw = getCleanSample(4, 4) - tare;
+		smoothedWeight = smoothedWeight * 0.85 + raw * 0.15;
+		
+		long displayWeight = smoothedWeight / 100;
+		long rawDisplay = raw / 100;
+		
+		// Clear line and display current weight
+		printf("\r                                                              \r");
+		printf("Delta: %5ld | Raw: %5ld | ", displayWeight, rawDisplay);
+		
+		// Show which cap is detected
+		if (matchesCap(displayWeight, cap1)) {
+			printf("Cap1(-%-4d)", cap1);
+		} else if (matchesCap(displayWeight, cap2)) {
+			printf("Cap2(-%-4d)", cap2);
+		} else if (matchesCap(displayWeight, cap3)) {
+			printf("Cap3(-%-4d)", cap3);
+		} else if (displayWeight >= -WEIGHT_MARGIN && displayWeight <= WEIGHT_MARGIN) {
+			printf("All caps on ");
+		} else {
+			printf("Unknown     ");
+		}
+		fflush(stdout);
+		
+		// Detect cap removal and trigger music
+		detectCapAndTriggerMusic(displayWeight);
+		
+		// Handle audio fade
+		handleFade();
+		
+		usleep(50000);  // 50ms delay (same as scaleTool.c)
 	}
-
+	
+	return 0;
 }

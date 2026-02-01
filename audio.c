@@ -1,9 +1,9 @@
 #include "audio.h"
 
 //file paths
-const char *JAZZ1_PATH = "~/music-bottles-4/music-files/jazz1.wav";
-const char *JAZZ2_PATH = "~/music-bottles-4/music-files/jazz2.wav";
-const char *JAZZ3_PATH = "~/music-bottles-4/music-files/jazz3.wav";
+const char *JAZZ1_PATH = "music-files/jazz1.wav";
+const char *JAZZ2_PATH = "music-files/jazz2.wav";
+const char *JAZZ3_PATH = "music-files/jazz3.wav";
 
 const char *CLAS1_PATH = "music-files/classic1.wav";
 const char *CLAS2_PATH = "music-files/classic2.wav";
@@ -166,6 +166,8 @@ void volume(int chan, int vol) {
 		play();
 	}
 
+	// Clamp volume to SDL_mixer max (128)
+	if (vol > 128) vol = 128;
 	Mix_Volume(chan, vol);
 }
 

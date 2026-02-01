@@ -1,4 +1,5 @@
 #include "hx711.h"
+#include <unistd.h>
 
 /**
 

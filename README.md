@@ -127,6 +127,45 @@ The runtime expects **six integer weights** (bottle and cap for each bottle), pl
 ./musicBottles bot1 cap1 bot2 cap2 bot3 cap3 [tare]
 ```
 
+### Scale Calibration & Debugging
+
+Use the `scaleTool` to view raw weight readings and calibrate the scale or measure bottle weights.
+
+To build and run the tool automatically:
+
+```
+./runScaleTool.sh
+```
+
+Or build manually:
+
+```
+gcc -o scaleTool scaleTool.c hx711.c gb_common.c
+sudo ./scaleTool
+```
+
+This will output the current tare value and continuous weight readings (raw and averaged).
+
+### Set ALSA default to card 2 (bcm2835 Headphones)
+
+If ALSA is choosing HDMI and you want the bcm2835 Headphones device by default, set the ALSA default card to 2.
+
+**System-wide** (recommended on the Pi): create or edit `/etc/asound.conf`:
+
+```
+defaults.pcm.card 2
+defaults.ctl.card 2
+```
+
+**Per-user**: create or edit `~/.asoundrc` with the same contents:
+
+```
+defaults.pcm.card 2
+defaults.ctl.card 2
+```
+
+This makes SDL/SDL_mixer use the headphone device when it opens the default ALSA device.
+
 If `tare` is omitted, the program performs a tare on startup. Example run command is in [runBottlesSquare.sh](runBottlesSquare.sh).
 
 ### Calibration workflow
@@ -140,22 +179,34 @@ If `tare` is omitted, the program performs a tare on startup. Example run comman
 
 `audio.c` expects `.wav` files such as `jazz1.wav`, `classic1.wav`, `synth1.wav`, etc., under `music-files/`. Ensure the WAV files exist and match the configured names.
 
-## Platform portability (Pi 3 → Pi 4)
+## Platform Compatibility
 
-This code uses **direct /dev/mem GPIO mapping**, which is sensitive to SoC base addresses. Two locations are relevant:
+This code now supports **Raspberry Pi 1, 2, 3, and 4** through automatic hardware detection.
 
-1. **Gertboard-style mapping** in [gb_common.c](gb_common.c) uses `BCM2708_PERI_BASE` hard-coded to `0x3F000000` (Pi 2/3).
-2. **minimal_gpio.c** uses `piPeriphBase = 0x3F000000` for ARMv7/ARMv8 systems (Pi 2/3).
+### Supported Platforms
 
-On **Raspberry Pi 4**, the peripheral base address is **0xFE000000**. To run on Pi 4, you must update these bases:
+| Platform | SoC | Peripheral Base | Status |
+|----------|-----|-----------------|--------|
+| Pi 1 | BCM2835 | 0x20000000 | ✓ Supported |
+| Pi 2 | BCM2836 | 0x3F000000 | ✓ Supported |
+| Pi 3 | BCM2837 | 0x3F000000 | ✓ Supported |
+| Pi 4 | BCM2711 | 0xFE000000 | ✓ Supported |
+| Pi 400 | BCM2711 | 0xFE000000 | ✓ Supported |
+| CM4 | BCM2711 | 0xFE000000 | ✓ Supported |
 
-- In [gb_common.c](gb_common.c), change `BCM2708_PERI_BASE` to `0xFE000000`.
-- In [minimal_gpio.c](minimal_gpio.c), set `piPeriphBase` to `0xFE000000` when detecting Pi 4.
+### Implementation Details
 
-Recommended portability approach:
+The code automatically detects the Raspberry Pi model at runtime by reading `/proc/cpuinfo` and examining the revision code:
 
-- Replace manual /dev/mem access with a maintained GPIO library (e.g., pigpio or libgpiod) to avoid base-address differences.
-- Gate Pi model detection and base selection in one place and share it between `gb_common` and `minimal_gpio`.
+- **gb_common.c**: Uses `detect_pi_model()` to determine the correct peripheral base address before memory mapping
+- **minimal_gpio.c**: Uses `gpioHardwareRevision()` with Pi 4 detection via new-style revision codes
+
+#### Pi 4 Specific Changes
+
+1. **Peripheral Base Address**: Pi 4 uses `0xFE000000` instead of `0x3F000000`
+2. **Pull-up/Pull-down Registers**: Pi 4 uses `GPIO_PUP_PDN_CNTRL` registers at offset 0xE4-0xF0 instead of the legacy `GPPUD`/`GPPUDCLK` mechanism
+
+The `gpioSetPullUpDown()` function automatically uses the correct register interface based on the detected Pi model.
 
 ## Project layout
 
@@ -167,6 +218,14 @@ Recommended portability approach:
 - [scaleTool.c](scaleTool.c): measurement tool
 - [lowpass.c](lowpass.c): filter test harness
 - [arduino/musicBottles/musicBottles.ino](arduino/musicBottles/musicBottles.ino): LED control firmware
+
+## Testing
+
+Run the unit tests to verify the GPIO detection and bottle state logic:
+
+```bash
+make test
+```
 
 ## Notes
 

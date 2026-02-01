@@ -7,6 +7,8 @@ Measuring tool, for scale calibration
 */
 
 #include "hx711.h"
+#include <unistd.h>
+
 
 
 int main(int argc, char **argv) {
