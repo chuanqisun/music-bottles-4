@@ -36,13 +36,29 @@
 
 #include "gb_common.h"
 
-#define BCM2708_PERI_BASE        0x3F000000
-#define CLOCK_BASE               (BCM2708_PERI_BASE + 0x101000) /* Clocks */
-#define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO   */
-#define PWM_BASE                 (BCM2708_PERI_BASE + 0x20C000) /* PWM    */
-#define SPI0_BASE                (BCM2708_PERI_BASE + 0x204000) /* SPI0 controller */
-#define UART0_BASE               (BCM2708_PERI_BASE + 0x201000) /* Uart 0 */
-#define UART1_BASE               (BCM2708_PERI_BASE + 0x215000) /* Uart 1 (not used) */
+/* 
+ * Peripheral base addresses:
+ * - Pi 1 (BCM2835): 0x20000000
+ * - Pi 2/3 (BCM2836/BCM2837): 0x3F000000
+ * - Pi 4 (BCM2711): 0xFE000000
+ * 
+ * We use runtime detection to determine the correct base.
+ */
+#define BCM2708_PERI_BASE_PI1    0x20000000
+#define BCM2708_PERI_BASE_PI2_3  0x3F000000
+#define BCM2708_PERI_BASE_PI4    0xFE000000
+
+/* Offsets from peripheral base */
+#define CLOCK_OFFSET             0x101000
+#define GPIO_OFFSET              0x200000
+#define PWM_OFFSET               0x20C000
+#define SPI0_OFFSET              0x204000
+#define UART0_OFFSET             0x201000
+#define UART1_OFFSET             0x215000
+
+/* Runtime-determined base addresses */
+static unsigned int peri_base = BCM2708_PERI_BASE_PI2_3;  /* Default to Pi 2/3 */
+static int is_pi4 = 0;
 
 #include <stdio.h>
 #include <string.h>
@@ -130,6 +146,75 @@ void long_wait(int v)
 
 
 //
+// Detect Raspberry Pi model and set peripheral base address
+// Returns: 1=Pi1, 2=Pi2/3, 4=Pi4, 0=unknown
+//
+static int detect_pi_model(void)
+{
+   FILE *fp;
+   char text[256];
+   unsigned int revision = 0;
+   int model = 0;
+   
+   fp = fopen("/proc/cpuinfo", "r");
+   if (!fp) return 0;
+   
+   while (fgets(text, sizeof(text), fp))
+   {
+      if (!strncmp(text, "Revision", 8))
+      {
+         char *colon = strchr(text, ':');
+         if (colon)
+         {
+            sscanf(colon + 1, "%x", &revision);
+         }
+         break;
+      }
+   }
+   fclose(fp);
+   
+   if (revision == 0) return 0;
+   
+   /* Check for new-style revision code (bit 23 set) */
+   if (revision & (1 << 23))
+   {
+      int type = (revision >> 4) & 0xFF;
+      /* Type 0x11 = Pi 4B, 0x13 = Pi 400, 0x14 = CM4 */
+      if (type == 0x11 || type == 0x13 || type == 0x14)
+      {
+         model = 4;
+         peri_base = BCM2708_PERI_BASE_PI4;
+         is_pi4 = 1;
+      }
+      else
+      {
+         /* Other new-style codes are Pi 2/3 */
+         model = 2;
+         peri_base = BCM2708_PERI_BASE_PI2_3;
+         is_pi4 = 0;
+      }
+   }
+   else
+   {
+      /* Old-style revision code */
+      if (revision < 4)
+      {
+         model = 1;
+         peri_base = BCM2708_PERI_BASE_PI1;
+      }
+      else
+      {
+         model = 2;
+         peri_base = BCM2708_PERI_BASE_PI2_3;
+      }
+      is_pi4 = 0;
+   }
+   
+   return model;
+}
+
+
+//
 // Set up memory regions to access the peripherals.
 // This is a bit of 'magic' which you should not touch.
 // It it also the part of the code which makes that
@@ -137,6 +222,17 @@ void long_wait(int v)
 //
 void setup_io()
 {  unsigned long extra;
+   unsigned int clock_base, gpio_base, pwm_base, spi0_base, uart0_base;
+   
+   /* Detect Pi model and set peripheral base */
+   detect_pi_model();
+   
+   /* Calculate base addresses from peripheral base + offsets */
+   clock_base = peri_base + CLOCK_OFFSET;
+   gpio_base = peri_base + GPIO_OFFSET;
+   pwm_base = peri_base + PWM_OFFSET;
+   spi0_base = peri_base + SPI0_OFFSET;
+   uart0_base = peri_base + UART0_OFFSET;
 
    /* open /dev/mem */
    if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
@@ -164,7 +260,7 @@ void setup_io()
       PROT_READ|PROT_WRITE,
       MAP_SHARED|MAP_FIXED,
       mem_fd,
-      CLOCK_BASE
+      clock_base
    );
 
    if ((long)clk_map < 0) {
@@ -193,7 +289,7 @@ void setup_io()
       PROT_READ|PROT_WRITE,
       MAP_SHARED|MAP_FIXED,
       mem_fd,
-      GPIO_BASE
+      gpio_base
    );
 
    if ((long)gpio_map < 0) {
@@ -221,7 +317,7 @@ void setup_io()
       PROT_READ|PROT_WRITE,
       MAP_SHARED|MAP_FIXED,
       mem_fd,
-      PWM_BASE
+      pwm_base
    );
 
    if ((long)pwm_map < 0) {
@@ -249,7 +345,7 @@ void setup_io()
       PROT_READ|PROT_WRITE,
       MAP_SHARED|MAP_FIXED,
       mem_fd,
-      SPI0_BASE
+      spi0_base
    );
 
    if ((long)spi0_map < 0) {
@@ -277,7 +373,7 @@ void setup_io()
       PROT_READ|PROT_WRITE,
       MAP_SHARED|MAP_FIXED,
       mem_fd,
-      UART0_BASE
+      uart0_base
    );
 
    if ((long)uart_map < 0) {

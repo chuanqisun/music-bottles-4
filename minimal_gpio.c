@@ -19,9 +19,9 @@
 #include <sys/types.h>
 
 static volatile uint32_t piModel = 1;
-
 static volatile uint32_t piPeriphBase = 0x20000000;
 static volatile uint32_t piBusAddr = 0x40000000;
+static volatile int isPi4 = 0;  /* Flag for Pi 4 specific handling */
 
 #define SYST_BASE  (piPeriphBase + 0x003000)
 #define DMA_BASE   (piPeriphBase + 0x007000)
@@ -59,6 +59,12 @@ static volatile uint32_t piBusAddr = 0x40000000;
 #define GPPUD     37
 #define GPPUDCLK0 38
 #define GPPUDCLK1 39
+
+/* Pi 4 uses different pull-up/down registers (GPIO_PUP_PDN_CNTRL) */
+#define GPPUPPDN0 57  /* GPIO Pull-up / Pull-down Register 0 */
+#define GPPUPPDN1 58  /* GPIO Pull-up / Pull-down Register 1 */
+#define GPPUPPDN2 59  /* GPIO Pull-up / Pull-down Register 2 */
+#define GPPUPPDN3 60  /* GPIO Pull-up / Pull-down Register 3 */
 
 #define SYST_CS  0
 #define SYST_CLO 1
@@ -110,17 +116,43 @@ int gpioGetMode(unsigned gpio)
 
 void gpioSetPullUpDown(unsigned gpio, unsigned pud)
 {
-   *(gpioReg + GPPUD) = pud;
+   if (isPi4)
+   {
+      /* Pi 4 uses GPIO_PUP_PDN_CNTRL registers instead of GPPUD/GPPUDCLK */
+      /* Each GPIO uses 2 bits: 00=no resistor, 01=pull-up, 10=pull-down */
+      int regOffset = GPPUPPDN0 + (gpio / 16);
+      int shift = (gpio % 16) * 2;
+      uint32_t pull;
+      
+      /* Map PI_PUD values to Pi 4 values */
+      switch(pud)
+      {
+         case PI_PUD_OFF:  pull = 0; break;  /* No resistor */
+         case PI_PUD_UP:   pull = 1; break;  /* Pull up */
+         case PI_PUD_DOWN: pull = 2; break;  /* Pull down */
+         default:          pull = 0; break;
+      }
+      
+      uint32_t reg = *(gpioReg + regOffset);
+      reg &= ~(3 << shift);  /* Clear the 2 bits */
+      reg |= (pull << shift);  /* Set the new value */
+      *(gpioReg + regOffset) = reg;
+   }
+   else
+   {
+      /* Pi 1/2/3 use GPPUD and GPPUDCLK registers */
+      *(gpioReg + GPPUD) = pud;
 
-   usleep(20);
+      usleep(20);
 
-   *(gpioReg + GPPUDCLK0 + PI_BANK) = PI_BIT;
+      *(gpioReg + GPPUDCLK0 + PI_BANK) = PI_BIT;
 
-   usleep(20);
-  
-   *(gpioReg + GPPUD) = 0;
+      usleep(20);
+     
+      *(gpioReg + GPPUD) = 0;
 
-   *(gpioReg + GPPUDCLK0 + PI_BANK) = 0;
+      *(gpioReg + GPPUDCLK0 + PI_BANK) = 0;
+   }
 }
 
 int gpioRead(unsigned gpio)
@@ -169,10 +201,12 @@ unsigned gpioHardwareRevision(void)
    char buf[512];
    char term;
    int chars=4; /* number of chars in revision string */
+   unsigned tempRev = 0;
 
    if (rev) return rev;
 
    piModel = 0;
+   isPi4 = 0;
 
    filp = fopen ("/proc/cpuinfo", "r");
 
@@ -200,6 +234,7 @@ unsigned gpioHardwareRevision(void)
                }
                else if (strstr (buf, "ARMv8") != NULL)
                {
+                  /* Could be Pi 3 (64-bit) or Pi 4, need to check revision */
                   piModel = 2;
                   chars = 6;
                   piPeriphBase = 0x3F000000;
@@ -211,9 +246,27 @@ unsigned gpioHardwareRevision(void)
          if (!strncasecmp("revision", buf, 8))
          {
             if (sscanf(buf+strlen(buf)-(chars+1),
-               "%x%c", &rev, &term) == 2)
+               "%x%c", &tempRev, &term) == 2)
             {
-               if (term != '\n') rev = 0;
+               if (term == '\n') 
+               {
+                  rev = tempRev;
+                  
+                  /* Check for new-style revision code (bit 23 set) */
+                  /* Pi 4 type codes: 0x11 = Pi 4B, 0x13 = Pi 400, 0x14 = CM4 */
+                  if (rev & (1 << 23))
+                  {
+                     int type = (rev >> 4) & 0xFF;
+                     if (type == 0x11 || type == 0x13 || type == 0x14)
+                     {
+                        /* This is a Pi 4 */
+                        piModel = 4;
+                        isPi4 = 1;
+                        piPeriphBase = 0xFE000000;
+                        piBusAddr = 0xC0000000;
+                     }
+                  }
+               }
             }
          }
       }
