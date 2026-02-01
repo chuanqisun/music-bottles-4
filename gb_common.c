@@ -57,8 +57,8 @@
 #define UART1_OFFSET             0x215000
 
 /* Runtime-determined base addresses */
-static unsigned int peri_base = BCM2708_PERI_BASE_PI2_3;  /* Default to Pi 2/3 */
-static int is_pi4 = 0;
+static unsigned int periBase = BCM2708_PERI_BASE_PI2_3;  /* Default to Pi 2/3 */
+static int isPi4 = 0;
 
 #include <stdio.h>
 #include <string.h>
@@ -183,15 +183,15 @@ static int detect_pi_model(void)
       if (type == 0x11 || type == 0x13 || type == 0x14)
       {
          model = 4;
-         peri_base = BCM2708_PERI_BASE_PI4;
-         is_pi4 = 1;
+         periBase = BCM2708_PERI_BASE_PI4;
+         isPi4 = 1;
       }
       else
       {
          /* Other new-style codes are Pi 2/3 */
          model = 2;
-         peri_base = BCM2708_PERI_BASE_PI2_3;
-         is_pi4 = 0;
+         periBase = BCM2708_PERI_BASE_PI2_3;
+         isPi4 = 0;
       }
    }
    else
@@ -200,14 +200,14 @@ static int detect_pi_model(void)
       if (revision < 4)
       {
          model = 1;
-         peri_base = BCM2708_PERI_BASE_PI1;
+         periBase = BCM2708_PERI_BASE_PI1;
       }
       else
       {
          model = 2;
-         peri_base = BCM2708_PERI_BASE_PI2_3;
+         periBase = BCM2708_PERI_BASE_PI2_3;
       }
-      is_pi4 = 0;
+      isPi4 = 0;
    }
    
    return model;
@@ -222,17 +222,17 @@ static int detect_pi_model(void)
 //
 void setup_io()
 {  unsigned long extra;
-   unsigned int clock_base, gpio_base, pwm_base, spi0_base, uart0_base;
+   unsigned int clockBase, gpioBase, pwmBase, spi0Base, uart0Base;
    
    /* Detect Pi model and set peripheral base */
    detect_pi_model();
    
    /* Calculate base addresses from peripheral base + offsets */
-   clock_base = peri_base + CLOCK_OFFSET;
-   gpio_base = peri_base + GPIO_OFFSET;
-   pwm_base = peri_base + PWM_OFFSET;
-   spi0_base = peri_base + SPI0_OFFSET;
-   uart0_base = peri_base + UART0_OFFSET;
+   clockBase = periBase + CLOCK_OFFSET;
+   gpioBase = periBase + GPIO_OFFSET;
+   pwmBase = periBase + PWM_OFFSET;
+   spi0Base = periBase + SPI0_OFFSET;
+   uart0Base = periBase + UART0_OFFSET;
 
    /* open /dev/mem */
    if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
@@ -260,7 +260,7 @@ void setup_io()
       PROT_READ|PROT_WRITE,
       MAP_SHARED|MAP_FIXED,
       mem_fd,
-      clock_base
+      clockBase
    );
 
    if ((long)clk_map < 0) {
@@ -289,7 +289,7 @@ void setup_io()
       PROT_READ|PROT_WRITE,
       MAP_SHARED|MAP_FIXED,
       mem_fd,
-      gpio_base
+      gpioBase
    );
 
    if ((long)gpio_map < 0) {
@@ -317,7 +317,7 @@ void setup_io()
       PROT_READ|PROT_WRITE,
       MAP_SHARED|MAP_FIXED,
       mem_fd,
-      pwm_base
+      pwmBase
    );
 
    if ((long)pwm_map < 0) {
@@ -345,7 +345,7 @@ void setup_io()
       PROT_READ|PROT_WRITE,
       MAP_SHARED|MAP_FIXED,
       mem_fd,
-      spi0_base
+      spi0Base
    );
 
    if ((long)spi0_map < 0) {
@@ -373,7 +373,7 @@ void setup_io()
       PROT_READ|PROT_WRITE,
       MAP_SHARED|MAP_FIXED,
       mem_fd,
-      uart0_base
+      uart0Base
    );
 
    if ((long)uart_map < 0) {
