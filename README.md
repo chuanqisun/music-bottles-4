@@ -127,6 +127,26 @@ The runtime expects **six integer weights** (bottle and cap for each bottle), pl
 ./musicBottles bot1 cap1 bot2 cap2 bot3 cap3 [tare]
 ```
 
+### Set ALSA default to card 2 (bcm2835 Headphones)
+
+If ALSA is choosing HDMI and you want the bcm2835 Headphones device by default, set the ALSA default card to 2.
+
+**System-wide** (recommended on the Pi): create or edit `/etc/asound.conf`:
+
+```
+defaults.pcm.card 2
+defaults.ctl.card 2
+```
+
+**Per-user**: create or edit `~/.asoundrc` with the same contents:
+
+```
+defaults.pcm.card 2
+defaults.ctl.card 2
+```
+
+This makes SDL/SDL_mixer use the headphone device when it opens the default ALSA device.
+
 If `tare` is omitted, the program performs a tare on startup. Example run command is in [runBottlesSquare.sh](runBottlesSquare.sh).
 
 ### Calibration workflow

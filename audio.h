@@ -7,5 +7,7 @@ void initSound();
 void setFiles(int i);
 void rewindFiles();
 void fadeOut(int chan);
+void handleFade();
 void play();
 void volume(int c, int v);
+int getVolume(int chan);
