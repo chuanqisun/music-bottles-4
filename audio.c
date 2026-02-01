@@ -17,6 +17,8 @@ const char *BOST1_PATH = "music-files/boston1.wav";
 const char *BOST2_PATH = "music-files/boston2.wav";
 const char *BOST3_PATH = "music-files/boston3.wav";
 
+const char *BIRTHDAY_PATH = "music-files/birthday.wav";
+
 
 //Wave chunks
 Mix_Chunk *JAZZ1 = NULL;
@@ -35,6 +37,9 @@ Mix_Chunk *BOST1 = NULL;
 Mix_Chunk *BOST2 = NULL;
 Mix_Chunk *BOST3 = NULL;
 
+Mix_Chunk *BIRTHDAY = NULL;
+int birthdayPlaying = 0;
+
 Mix_Chunk *chanA = NULL;
 Mix_Chunk *chanB = NULL;
 Mix_Chunk *chanC = NULL;
@@ -49,7 +54,7 @@ void initSound() {
 		return;
 	}
 
-	Mix_AllocateChannels(3);
+	Mix_AllocateChannels(4);  // 3 for music tracks + 1 for birthday
 
 	//Initialize SDL_mixer 
 	if( Mix_OpenAudio( 22050, MIX_DEFAULT_FORMAT, 2, 4096 ) == -1 ) {
@@ -60,6 +65,7 @@ void initSound() {
 	volume(0,0);
 	volume(1,0);
 	volume(2,0);
+	Mix_Volume(3, 0);  // Birthday channel
 
 	printf("Loading sounds to memory...\n");
 	
@@ -94,6 +100,10 @@ void initSound() {
 	BOST3 = Mix_LoadWAV(BOST3_PATH);
 	if (BOST3 == NULL) { printf("Error initializing CHAN_A: %s\n",Mix_GetError());	return; }
 	printf("Loaded 'Boston'.\n");
+
+	BIRTHDAY = Mix_LoadWAV(BIRTHDAY_PATH);
+	if (BIRTHDAY == NULL) { printf("Warning: Could not load birthday.wav: %s\n",Mix_GetError()); }
+	else { printf("Loaded 'Birthday'.\n"); }
 
 	setFiles(0); //default Jazz
 }
@@ -173,6 +183,31 @@ void volume(int chan, int vol) {
 
 int getVolume(int chan) {
 	return Mix_Volume(chan,-1);
+}
+
+// Birthday mode functions
+void playBirthday() {
+	if (BIRTHDAY == NULL) return;
+	if (!birthdayPlaying) {
+		birthdayPlaying = 1;
+		Mix_Volume(3, 105);
+		if (Mix_PlayChannel(3, BIRTHDAY, -1) == -1) {
+			printf("Error playing BIRTHDAY: %s\n", Mix_GetError());
+			birthdayPlaying = 0;
+		}
+	}
+}
+
+void stopBirthday() {
+	if (birthdayPlaying) {
+		birthdayPlaying = 0;
+		Mix_HaltChannel(3);
+		Mix_Volume(3, 0);
+	}
+}
+
+int isBirthdayPlaying() {
+	return birthdayPlaying;
 }
 
 void play() {

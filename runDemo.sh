@@ -4,4 +4,5 @@
 # Detection margin: +/-30
 
 # Using classic (1) with cap weights 629, 728, 426
+make musicBottles
 sudo ./musicBottles 1 629 728 426 

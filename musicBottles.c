@@ -38,6 +38,9 @@ int cap1Removed = 0;
 int cap2Removed = 0;
 int cap3Removed = 0;
 
+// Birthday mode: when all three caps are removed
+int birthdayMode = 0;
+
 void setupGPIO() {
 	if (gpioInitialise() < 0) exit(-1);
 	
@@ -113,11 +116,32 @@ void detectCapAndTriggerMusic(long weightDelta) {
 		cap3Removed = 0;
 	}
 	
+	// Check for birthday mode: all three caps removed
+	int allCapsRemoved = cap1Removed && cap2Removed && cap3Removed;
+	
+	if (allCapsRemoved && !birthdayMode) {
+		// Enter birthday mode: fade out all tracks and play birthday
+		printf("\n>>> ALL CAPS REMOVED - BIRTHDAY MODE! <<<\n");
+		fadeOut(0);
+		fadeOut(1);
+		fadeOut(2);
+		playBirthday();
+		birthdayMode = 1;
+	} else if (!allCapsRemoved && birthdayMode) {
+		// Exit birthday mode: stop birthday track
+		printf("\n>>> Exiting birthday mode <<<\n");
+		stopBirthday();
+		birthdayMode = 0;
+	}
+	
 	// Apply volume or fade-out each cycle (reference pattern)
 	// Volume 105 is used (must be >= 100 to trigger play, per audio.c logic)
-	cap1Removed ? volume(0, 105) : fadeOut(0);
-	cap2Removed ? volume(1, 105) : fadeOut(1);
-	cap3Removed ? volume(2, 105) : fadeOut(2);
+	// Skip normal volume control in birthday mode
+	if (!birthdayMode) {
+		cap1Removed ? volume(0, 105) : fadeOut(0);
+		cap2Removed ? volume(1, 105) : fadeOut(1);
+		cap3Removed ? volume(2, 105) : fadeOut(2);
+	}
 	
 	// Rewind files if all caps are back on
 	if (noCapRemoved && !cap1Removed && !cap2Removed && !cap3Removed) {

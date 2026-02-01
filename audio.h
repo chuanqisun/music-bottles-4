@@ -11,3 +11,8 @@ void handleFade();
 void play();
 void volume(int c, int v);
 int getVolume(int chan);
+
+// Birthday mode functions
+void playBirthday();
+void stopBirthday();
+int isBirthdayPlaying();
