@@ -74,18 +74,27 @@ void setFiles() {
 
 
 clock_t fadeClock;	
-int toFade[3] = {0,0,0};
-void handleFade() {
-//			vol = lastVol * 1-((float)(clock()-fadeClock))/CLOCKS_PER_SEC;
+// Fade state for all 4 channels: 0=track1, 1=track2, 2=track3, 3=birthday
+int toFade[4] = {0,0,0,0};
 
+void handleFade() {
 	int i;
-	for (i = 0; i<3; i++) {
-		if (toFade[i]!=0) {
-			if (getVolume(i)<5) {
-				volume(i,0);
-				toFade[i]=0;
+	// Handle fade for all 4 channels (tracks 0-2 and birthday on channel 3)
+	for (i = 0; i < 4; i++) {
+		if (toFade[i] != 0) {
+			int currentVol = getVolume(i);
+			if (currentVol < 5) {
+				// Fade complete - set volume to 0 and clear fade flag
+				Mix_Volume(i, 0);
+				toFade[i] = 0;
+				// Stop birthday channel when fade completes
+				if (i == 3 && birthdayPlaying) {
+					birthdayPlaying = 0;
+					Mix_HaltChannel(3);
+				}
 			} else {
-				volume(i,getVolume(i)*0.96);
+				// Continue fading
+				Mix_Volume(i, currentVol * 0.96);
 			}
 		}
 	}
@@ -96,8 +105,13 @@ void fadeOut(int chan) {
 }
 
 void volume(int chan, int vol) {
+	// Cancel any pending fade when setting volume high
+	if (vol >= 100) {
+		toFade[chan] = 0;
+	}
 	
-	if (vol>=100 && isPlaying==0 && toFade[chan]==0) {
+	// Start playback if not already playing
+	if (vol >= 100 && isPlaying == 0) {
 		play();
 	}
 
@@ -113,6 +127,10 @@ int getVolume(int chan) {
 // Birthday mode functions
 void playBirthday() {
 	if (BIRTHDAY == NULL) return;
+	
+	// Cancel any pending fade on birthday channel
+	toFade[3] = 0;
+	
 	if (!birthdayPlaying) {
 		birthdayPlaying = 1;
 		Mix_Volume(3, 105);
@@ -120,12 +138,22 @@ void playBirthday() {
 			printf("Error playing BIRTHDAY: %s\n", Mix_GetError());
 			birthdayPlaying = 0;
 		}
+	} else {
+		// Already playing, just restore volume
+		Mix_Volume(3, 105);
+	}
+}
+
+void fadeOutBirthday() {
+	if (birthdayPlaying) {
+		toFade[3] = 1;
 	}
 }
 
 void stopBirthday() {
 	if (birthdayPlaying) {
 		birthdayPlaying = 0;
+		toFade[3] = 0;
 		Mix_HaltChannel(3);
 		Mix_Volume(3, 0);
 	}

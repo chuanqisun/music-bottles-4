@@ -103,30 +103,35 @@ int matchState(long weightDelta) {
 	return -1;  // Unknown state
 }
 
-// Apply audio based on state
+// Apply audio based on cap state
+// Logic is decoupled: we determine target state for each of 4 tracks
+// based on 3 cap states, then apply appropriate transitions
 void applyAudioState(int state) {
-	if (state == 7) {
-		// Birthday mode: all three caps removed
-		fadeOut(0);
-		fadeOut(1);
-		fadeOut(2);
+	// Determine target state for each track
+	int birthdayMode = (state == 7);  // All 3 caps removed
+	
+	// Target state for each track (1 = should play, 0 = should stop)
+	int track1Target = !birthdayMode && (state & 0x01);  // Cap1 removed, not birthday
+	int track2Target = !birthdayMode && (state & 0x02);  // Cap2 removed, not birthday
+	int track3Target = !birthdayMode && (state & 0x04);  // Cap3 removed, not birthday
+	int birthdayTarget = birthdayMode;
+	
+	// Apply transitions for tracks 1-3
+	// Each track: if target is on -> volume up, if target is off -> fade out
+	track1Target ? volume(0, 105) : fadeOut(0);
+	track2Target ? volume(1, 105) : fadeOut(1);
+	track3Target ? volume(2, 105) : fadeOut(2);
+	
+	// Apply transition for birthday track
+	if (birthdayTarget) {
 		playBirthday();
-	} else {
-		// Stop birthday if playing
-		stopBirthday();
-		
-		// Apply volume/fade for each track based on cap state
-		// Track 1 plays when cap1 is removed (bit 0)
-		(state & 0x01) ? volume(0, 105) : fadeOut(0);
-		// Track 2 plays when cap2 is removed (bit 1)
-		(state & 0x02) ? volume(1, 105) : fadeOut(1);
-		// Track 3 plays when cap3 is removed (bit 2)
-		(state & 0x04) ? volume(2, 105) : fadeOut(2);
-		
-		// Rewind files when all caps are on
-		if (state == 0) {
-			rewindFiles();
-		}
+	} else if (isBirthdayPlaying()) {
+		fadeOutBirthday();
+	}
+	
+	// Rewind files when all caps are on (state 0 = reset point)
+	if (state == 0) {
+		rewindFiles();
 	}
 }
 
