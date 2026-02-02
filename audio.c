@@ -124,6 +124,28 @@ int getVolume(int chan) {
 	return Mix_Volume(chan,-1);
 }
 
+// Debug functions
+void playDebugSound() {
+	const char *DEBUG_PATH = "music-files/songbird.wav";
+	Mix_Chunk *debugChunk = Mix_LoadWAV(DEBUG_PATH);
+	if (debugChunk == NULL) {
+		printf("Error loading debug sound %s: %s\n", DEBUG_PATH, Mix_GetError());
+		return;
+	}
+	
+	printf("DEBUG: Playing %s for 10 seconds...\n", DEBUG_PATH);
+	Mix_Volume(0, 105);
+	if (Mix_PlayChannel(0, debugChunk, 0) == -1) {
+		printf("Error playing debug sound: %s\n", Mix_GetError());
+	} else {
+		SDL_Delay(10000);
+		Mix_HaltChannel(0);
+	}
+	Mix_Volume(0, 0);
+	Mix_FreeChunk(debugChunk);
+	printf("DEBUG: Done.\n");
+}
+
 // Birthday mode functions
 void playBirthday() {
 	if (BIRTHDAY == NULL) return;

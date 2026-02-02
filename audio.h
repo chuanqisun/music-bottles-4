@@ -12,6 +12,9 @@ void play();
 void volume(int c, int v);
 int getVolume(int chan);
 
+// Debug functions
+void playDebugSound();
+
 // Birthday mode functions
 void playBirthday();
 void fadeOutBirthday();

@@ -168,6 +168,9 @@ int main(int argc, char **argv) {
 	setupGPIO();
 	initSound();
 	
+	// Play debug sound for 10 seconds if requested
+	playDebugSound();
+	
 	// Auto tare on start
 	printf("Acquiring tare... ");
 	fflush(stdout);
