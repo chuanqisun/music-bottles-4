@@ -4,7 +4,7 @@
 #include <time.h>
 
 void initSound();
-void setFiles(int i);
+void setFiles();
 void rewindFiles();
 void fadeOut(int chan);
 void handleFade();
