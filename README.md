@@ -127,6 +127,26 @@ The runtime expects **six integer weights** (bottle and cap for each bottle), pl
 ./musicBottles bot1 cap1 bot2 cap2 bot3 cap3 [tare]
 ```
 
+### Installation and Auto-start (Linux/Raspberry Pi)
+
+You can set up `musicBottles` to run automatically as a background service on system startup (no login required).
+
+1. **Configure weights**: Edit [runDemo.sh](runDemo.sh) and update the weights in the `sudo ./musicBottles ...` command to match your calibrated bottle and cap weights.
+2. **Install the service**: 
+   ```bash
+   sudo ./install.sh
+   ```
+   This creates and starts a systemd service called `musicbottles.service`.
+3. **Uninstall the service**:
+   ```bash
+   sudo ./uninstall.sh
+   ```
+
+You can check the status of the service anytime with:
+```bash
+sudo systemctl status musicbottles.service
+```
+
 ### Scale Calibration & Debugging
 
 Use the `scaleTool` to view raw weight readings and calibrate the scale or measure bottle weights.
