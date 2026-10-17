@@ -22,7 +22,7 @@ Mix_Chunk *chanC = NULL;
 #define FADE_OUT_MS 200
 
 #define KEEPALIVE_CHANNEL 3
-#define KEEPALIVE_VOL 3
+#define KEEPALIVE_VOL 2
 
 // Internal volume and target tracking for smooth time-based fading
 static float channelVol[3] = {0.0f, 0.0f, 0.0f};
