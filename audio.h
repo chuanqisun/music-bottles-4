@@ -1,4 +1,7 @@
 
+#ifndef AUDIO_H
+#define AUDIO_H
+
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mixer.h>
 #include <time.h>
@@ -6,6 +9,7 @@
 void initSound();
 void setFiles();
 void rewindFiles();
+void fadeIn(int chan);
 void fadeOut(int chan);
 void handleFade();
 void play();
@@ -20,3 +24,5 @@ void playBirthday();
 void fadeOutBirthday();
 void stopBirthday();
 int isBirthdayPlaying();
+
+#endif

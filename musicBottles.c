@@ -8,7 +8,7 @@ Simplified weight change detection system:
 - Auto tare on start
 - Detect cap removal by weight delta matching
 - Uses precomputed weight table for all 8 cap combinations
-- Plays classic tracks and birthday song (when all caps removed)
+- Plays classic tracks, one cap per track.
 
 */
 
@@ -27,6 +27,9 @@ Simplified weight change detection system:
 
 // Weight detection error margin (+-20)
 #define WEIGHT_MARGIN 20
+
+// Number of consecutive samples required before committing state change
+#define DEBOUNCE_COUNT 3
 
 // Global state
 long tare = 0;
@@ -114,16 +117,10 @@ int matchState(long weightDelta)
 // Each bottle cap directly controls track 0, 1, or 2 (classic 1, 2, 3)
 void applyAudioState(int state)
 {
-	// Target state for each track (1 = play, 0 = fade out)
-	(state & 0x01) ? volume(0, 105) : fadeOut(0);
-	(state & 0x02) ? volume(1, 105) : fadeOut(1);
-	(state & 0x04) ? volume(2, 105) : fadeOut(2);
-
-	// Rewind files when all caps are on (state 0 = reset point)
-	if (state == 0)
-	{
-		rewindFiles();
-	}
+	// Target state for each track (1 = fade in, 0 = fade out)
+	(state & 0x01) ? fadeIn(0) : fadeOut(0);
+	(state & 0x02) ? fadeIn(1) : fadeOut(1);
+	(state & 0x04) ? fadeIn(2) : fadeOut(2);
 }
 
 int main(int argc, char **argv)
@@ -144,7 +141,8 @@ int main(int argc, char **argv)
 	printf("=== Music Bottles v4 ===\n");
 	printf("Sound set: Classic\n");
 	printf("Cap weights: Cap1=%d, Cap2=%d, Cap3=%d\n", cap1, cap2, cap3);
-	printf("Detection margin: +/-%d\n\n", WEIGHT_MARGIN);
+	printf("Detection margin: +/-%d\n", WEIGHT_MARGIN);
+	printf("State debounce count: %d\n\n", DEBOUNCE_COUNT);
 
 	// Initialize weight table
 	initWeightTable();
@@ -174,6 +172,9 @@ int main(int argc, char **argv)
 	printf("Monitoring weight changes...\n");
 	printf("(Weight delta shown relative to tared zero)\n\n");
 
+	int candidateState = -1;
+	int debounceCount = 0;
+
 	// Main loop
 	while (1)
 	{
@@ -184,31 +185,58 @@ int main(int argc, char **argv)
 		long rawDisplay = raw / 100;
 
 		// Find matching state
-		int newState = matchState(displayWeight);
+		int detectedState = matchState(displayWeight);
+
+		// State debounce: candidate must persist for DEBOUNCE_COUNT consecutive samples
+		if (detectedState >= 0 && detectedState != currentState)
+		{
+			if (detectedState == candidateState)
+			{
+				debounceCount++;
+			}
+			else
+			{
+				candidateState = detectedState;
+				debounceCount = 1;
+			}
+
+			if (debounceCount >= DEBOUNCE_COUNT)
+			{
+				printf("\n>>> State change: %s -> %s\n",
+							 stateNames[currentState], stateNames[candidateState]);
+				currentState = candidateState;
+				candidateState = -1;
+				debounceCount = 0;
+				setBottleLEDs(currentState);
+				applyAudioState(currentState);
+			}
+		}
+		else
+		{
+			candidateState = -1;
+			debounceCount = 0;
+		}
 
 		// Clear line and display current weight
 		printf("\r                                                              \r");
 		printf("Delta: %5ld | Raw: %5ld | ", displayWeight, rawDisplay);
 
-		if (newState >= 0)
+		if (detectedState >= 0)
 		{
-			printf("%s", stateNames[newState]);
+			if (detectedState != currentState)
+			{
+				printf("%s [%d/%d]", stateNames[detectedState], debounceCount, DEBOUNCE_COUNT);
+			}
+			else
+			{
+				printf("%s", stateNames[detectedState]);
+			}
 		}
 		else
 		{
 			printf("Unknown     ");
 		}
 		fflush(stdout);
-
-		// Handle state change
-		if (newState >= 0 && newState != currentState)
-		{
-			printf("\n>>> State change: %s -> %s\n",
-						 stateNames[currentState], stateNames[newState]);
-			currentState = newState;
-			setBottleLEDs(currentState);
-			applyAudioState(currentState);
-		}
 
 		// Handle audio fade
 		handleFade();
