@@ -1,19 +1,16 @@
 #include "audio.h"
 
-// File paths - classic tracks and birthday only
+// File paths - classic tracks and keep-alive
 const char *CLAS1_PATH = "music-files/classic1.wav";
 const char *CLAS2_PATH = "music-files/classic2.wav";
 const char *CLAS3_PATH = "music-files/classic3.wav";
-const char *BIRTHDAY_PATH = "music-files/birthday.wav";
 const char *SONGBIRD_PATH = "music-files/songbird.wav";
 
 // Wave chunks
 Mix_Chunk *CLAS1 = NULL;
 Mix_Chunk *CLAS2 = NULL;
 Mix_Chunk *CLAS3 = NULL;
-Mix_Chunk *BIRTHDAY = NULL;
 Mix_Chunk *SONGBIRD = NULL;
-int birthdayPlaying = 0;
 int keepAlivePlaying = 0;
 
 Mix_Chunk *chanA = NULL;
@@ -24,12 +21,12 @@ Mix_Chunk *chanC = NULL;
 #define FADE_IN_MS 400
 #define FADE_OUT_MS 200
 
-#define KEEPALIVE_CHANNEL 4
-#define KEEPALIVE_VOL 1
+#define KEEPALIVE_CHANNEL 3
+#define KEEPALIVE_VOL 3
 
 // Internal volume and target tracking for smooth time-based fading
-static float channelVol[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-static float channelTarget[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+static float channelVol[3] = {0.0f, 0.0f, 0.0f};
+static float channelTarget[3] = {0.0f, 0.0f, 0.0f};
 static Uint32 lastFadeTicks = 0;
 
 void initSound()
@@ -44,7 +41,7 @@ void initSound()
 		return;
 	}
 
-	Mix_AllocateChannels(5); // 3 for music tracks + 1 for birthday + 1 for keep-alive
+	Mix_AllocateChannels(4); // 3 for music tracks + 1 for keep-alive
 
 	// Initialize SDL_mixer
 	if (Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 4096) == -1)
@@ -56,10 +53,7 @@ void initSound()
 	volume(0, 0);
 	volume(1, 0);
 	volume(2, 0);
-	Mix_Volume(3, 0);									// Birthday channel
 	Mix_Volume(KEEPALIVE_CHANNEL, 0); // Keep-alive channel
-	channelVol[3] = 0.0f;
-	channelTarget[3] = 0.0f;
 	lastFadeTicks = SDL_GetTicks();
 
 	printf("Loading sounds to memory...\n");
@@ -83,16 +77,6 @@ void initSound()
 		return;
 	}
 	printf("Loaded 'Classic' tracks.\n");
-
-	BIRTHDAY = Mix_LoadWAV(BIRTHDAY_PATH);
-	if (BIRTHDAY == NULL)
-	{
-		printf("Warning: Could not load birthday.wav: %s\n", Mix_GetError());
-	}
-	else
-	{
-		printf("Loaded 'Birthday'.\n");
-	}
 
 	SONGBIRD = Mix_LoadWAV(SONGBIRD_PATH);
 	if (SONGBIRD == NULL)
@@ -134,7 +118,7 @@ void setFiles()
 
 void fadeIn(int chan)
 {
-	if (chan < 0 || chan >= 4)
+	if (chan < 0 || chan >= 3)
 		return;
 	channelTarget[chan] = (float)FADE_TARGET_VOL;
 
@@ -147,7 +131,7 @@ void fadeIn(int chan)
 
 void fadeOut(int chan)
 {
-	if (chan < 0 || chan >= 4)
+	if (chan < 0 || chan >= 3)
 		return;
 	channelTarget[chan] = 0.0f;
 }
@@ -172,7 +156,7 @@ void handleFade()
 	float inStep = ((float)FADE_TARGET_VOL / (float)FADE_IN_MS) * (float)dt;
 	float outStep = ((float)FADE_TARGET_VOL / (float)FADE_OUT_MS) * (float)dt;
 
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < 3; i++)
 	{
 		if (channelVol[i] < channelTarget[i])
 		{
@@ -193,13 +177,6 @@ void handleFade()
 				channelVol[i] = channelTarget[i];
 			}
 			Mix_Volume(i, (int)(channelVol[i] + 0.5f));
-
-			// Stop birthday channel when fade completes
-			if (i == 3 && channelVol[3] <= 0.0f && birthdayPlaying)
-			{
-				birthdayPlaying = 0;
-				Mix_HaltChannel(3);
-			}
 		}
 	}
 
@@ -215,7 +192,7 @@ void handleFade()
 
 void volume(int chan, int vol)
 {
-	if (chan < 0 || chan >= 4)
+	if (chan < 0 || chan >= 3)
 		return;
 	if (vol > 128)
 		vol = 128;
@@ -262,52 +239,6 @@ void playDebugSound()
 	Mix_Volume(0, 0);
 	Mix_FreeChunk(debugChunk);
 	printf("DEBUG: Done.\n");
-}
-
-// Birthday mode functions
-void playBirthday()
-{
-	if (BIRTHDAY == NULL)
-		return;
-
-	if (!birthdayPlaying)
-	{
-		birthdayPlaying = 1;
-		channelVol[3] = 0.0f;
-		Mix_Volume(3, 0);
-		if (Mix_PlayChannel(3, BIRTHDAY, -1) == -1)
-		{
-			printf("Error playing BIRTHDAY: %s\n", Mix_GetError());
-			birthdayPlaying = 0;
-			return;
-		}
-	}
-	fadeIn(3);
-}
-
-void fadeOutBirthday()
-{
-	if (birthdayPlaying)
-	{
-		fadeOut(3);
-	}
-}
-
-void stopBirthday()
-{
-	if (birthdayPlaying)
-	{
-		birthdayPlaying = 0;
-		channelVol[3] = 0.0f;
-		channelTarget[3] = 0.0f;
-		Mix_HaltChannel(3);
-		Mix_Volume(3, 0);
-	}
-}
-
-int isBirthdayPlaying()
-{
-	return birthdayPlaying;
 }
 
 // Keep-alive functions (plays songbird at inaudible volume to prevent Bluetooth speaker auto-sleep)

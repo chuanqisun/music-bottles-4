@@ -24,10 +24,4 @@ void startKeepAlive();
 void stopKeepAlive();
 int isKeepAlivePlaying();
 
-// Birthday mode functions
-void playBirthday();
-void fadeOutBirthday();
-void stopBirthday();
-int isBirthdayPlaying();
-
 #endif
