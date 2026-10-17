@@ -5,13 +5,16 @@ const char *CLAS1_PATH = "music-files/classic1.wav";
 const char *CLAS2_PATH = "music-files/classic2.wav";
 const char *CLAS3_PATH = "music-files/classic3.wav";
 const char *BIRTHDAY_PATH = "music-files/birthday.wav";
+const char *SONGBIRD_PATH = "music-files/songbird.wav";
 
 // Wave chunks
 Mix_Chunk *CLAS1 = NULL;
 Mix_Chunk *CLAS2 = NULL;
 Mix_Chunk *CLAS3 = NULL;
 Mix_Chunk *BIRTHDAY = NULL;
+Mix_Chunk *SONGBIRD = NULL;
 int birthdayPlaying = 0;
+int keepAlivePlaying = 0;
 
 Mix_Chunk *chanA = NULL;
 Mix_Chunk *chanB = NULL;
@@ -20,6 +23,9 @@ Mix_Chunk *chanC = NULL;
 #define FADE_TARGET_VOL 105
 #define FADE_IN_MS 400
 #define FADE_OUT_MS 200
+
+#define KEEPALIVE_CHANNEL 4
+#define KEEPALIVE_VOL 1
 
 // Internal volume and target tracking for smooth time-based fading
 static float channelVol[4] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -38,7 +44,7 @@ void initSound()
 		return;
 	}
 
-	Mix_AllocateChannels(4); // 3 for music tracks + 1 for birthday
+	Mix_AllocateChannels(5); // 3 for music tracks + 1 for birthday + 1 for keep-alive
 
 	// Initialize SDL_mixer
 	if (Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 4096) == -1)
@@ -50,7 +56,8 @@ void initSound()
 	volume(0, 0);
 	volume(1, 0);
 	volume(2, 0);
-	Mix_Volume(3, 0); // Birthday channel
+	Mix_Volume(3, 0);									// Birthday channel
+	Mix_Volume(KEEPALIVE_CHANNEL, 0); // Keep-alive channel
 	channelVol[3] = 0.0f;
 	channelTarget[3] = 0.0f;
 	lastFadeTicks = SDL_GetTicks();
@@ -87,6 +94,16 @@ void initSound()
 		printf("Loaded 'Birthday'.\n");
 	}
 
+	SONGBIRD = Mix_LoadWAV(SONGBIRD_PATH);
+	if (SONGBIRD == NULL)
+	{
+		printf("Warning: Could not load songbird.wav: %s\n", Mix_GetError());
+	}
+	else
+	{
+		printf("Loaded 'Songbird' (keep-alive).\n");
+	}
+
 	setFiles(); // Initialize classic tracks
 }
 
@@ -100,7 +117,9 @@ void rewindFiles()
 // Set files to classic tracks (only supported sound set)
 void setFiles()
 {
-	Mix_HaltChannel(-1);
+	Mix_HaltChannel(0);
+	Mix_HaltChannel(1);
+	Mix_HaltChannel(2);
 	isPlaying = 0;
 	chanA = CLAS1;
 	chanB = CLAS2;
@@ -289,6 +308,39 @@ void stopBirthday()
 int isBirthdayPlaying()
 {
 	return birthdayPlaying;
+}
+
+// Keep-alive functions (plays songbird at inaudible volume to prevent Bluetooth speaker auto-sleep)
+void startKeepAlive()
+{
+	if (SONGBIRD == NULL)
+		return;
+
+	if (!keepAlivePlaying)
+	{
+		keepAlivePlaying = 1;
+		Mix_Volume(KEEPALIVE_CHANNEL, KEEPALIVE_VOL);
+		if (Mix_PlayChannel(KEEPALIVE_CHANNEL, SONGBIRD, -1) == -1)
+		{
+			printf("Error playing keep-alive: %s\n", Mix_GetError());
+			keepAlivePlaying = 0;
+			return;
+		}
+	}
+}
+
+void stopKeepAlive()
+{
+	if (keepAlivePlaying)
+	{
+		keepAlivePlaying = 0;
+		Mix_HaltChannel(KEEPALIVE_CHANNEL);
+	}
+}
+
+int isKeepAlivePlaying()
+{
+	return keepAlivePlaying;
 }
 
 void play()

@@ -121,6 +121,16 @@ void applyAudioState(int state)
 	(state & 0x01) ? fadeIn(0) : fadeOut(0);
 	(state & 0x02) ? fadeIn(1) : fadeOut(1);
 	(state & 0x04) ? fadeIn(2) : fadeOut(2);
+
+	// Keep Bluetooth speaker awake with inaudible sound when all caps are on
+	if (state == 0)
+	{
+		startKeepAlive();
+	}
+	else
+	{
+		stopKeepAlive();
+	}
 }
 
 int main(int argc, char **argv)
@@ -174,6 +184,10 @@ int main(int argc, char **argv)
 
 	int candidateState = -1;
 	int debounceCount = 0;
+
+	// Initialize LEDs and audio state (all caps on -> keep-alive active)
+	setBottleLEDs(currentState);
+	applyAudioState(currentState);
 
 	// Main loop
 	while (1)

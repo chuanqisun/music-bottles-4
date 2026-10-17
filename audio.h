@@ -19,6 +19,11 @@ int getVolume(int chan);
 // Debug functions
 void playDebugSound();
 
+// Keep-alive functions
+void startKeepAlive();
+void stopKeepAlive();
+int isKeepAlivePlaying();
+
 // Birthday mode functions
 void playBirthday();
 void fadeOutBirthday();
